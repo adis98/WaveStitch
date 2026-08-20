@@ -87,3 +87,10 @@ def metadataMask(metadata, synthmask, dataset):
             elif synthmask == "F":
                 return (metadata['year'] == 2020) & (metadata['city'] == 'san')
 
+
+        elif dataset == "QECParityZZ":
+            # TODO fill with values that make sense
+            if synthmask == "C":
+                return metadata['shot_id'] <= 2000
+            else:
+                raise NotImplementedError('TODO define metadata properly')

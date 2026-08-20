@@ -6,12 +6,15 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 
 pd.set_option('future.no_silent_downcasting', True)
 
-datasets = {"WebTraffic": "WebTrafficLAcity/lacity.org-website-traffic.csv",
-            "RossmanSales": "RossmanSales/train.csv",
-            "AustraliaTourism": "QuarterlyTourismAustralia/tourism.csv",
-            "MetroTraffic": "MetroInterstateTrafficVolume/Metro_Interstate_Traffic_Volume.csv/Metro_Interstate_Traffic_Volume.csv",
-            "BeijingAirQuality": "BeijingAirQuality/beijing+multi+site+air+quality+data",
-            "PanamaEnergy": "PanamaEnergy/continuous dataset.csv"}
+datasets = {
+    "WebTraffic": "WebTrafficLAcity/lacity.org-website-traffic.csv",
+    "RossmanSales": "RossmanSales/train.csv",
+    "AustraliaTourism": "QuarterlyTourismAustralia/tourism.csv",
+    "MetroTraffic": "MetroInterstateTrafficVolume/Metro_Interstate_Traffic_Volume.csv/Metro_Interstate_Traffic_Volume.csv",
+    "BeijingAirQuality": "BeijingAirQuality/beijing+multi+site+air+quality+data",
+    "PanamaEnergy": "PanamaEnergy/continuous dataset.csv",
+    "QECParityZZ": "processed_zz_parity_check/qec_table.csv"
+}
 
 
 class CyclicEncoder:
@@ -125,6 +128,21 @@ class Preprocessor:
         elif name == "PanamaEnergy":
             self.test_indices = self.df_orig.index[self.df_orig['year'].isin([2020])].to_list()
             self.train_indices = self.df_orig.index[~self.df_orig['year'].isin([2020])].to_list()
+        elif name == "QECParityZZ":
+            # 70/30 split, keeping all rows with the same shot_id together
+            seed = 42
+            rng = np.random.default_rng(seed)
+
+            shot_ids = self.df_orig["shot_id"].unique()
+            shuffled_shot_ids = rng.permutation(shot_ids)
+
+            n_train = int(0.7 * len(shuffled_shot_ids))
+            train_shot_ids = set(shuffled_shot_ids[:n_train])
+
+            train_mask = self.df_orig["shot_id"].isin(train_shot_ids)
+
+            self.train_indices = self.df_orig.index[train_mask].to_list()
+            self.test_indices = self.df_orig.index[~train_mask].to_list()
 
     def fetchDataset(self, name, return_cleaned):
         if name != "BeijingAirQuality":
@@ -195,6 +213,10 @@ class Preprocessor:
                 df = df[['year', 'month', 'day', 'hour', 'city', 'T2M', 'TQL', 'W2M', 'QV2M']]
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features_uncyclic = ['year', 'month', 'day', 'hour', 'city']
+            elif name == 'QECParityZZ':
+                # TODO For now only predict measured d1 and d2 and log_flip, maybe use other features/targets too?
+                #df.drop(columns=['prep_state', 'prep_D1', 'prep_D2', 'expected_parity', 'parity'], inplace=True)
+                self.hierarchical_features_uncyclic = ['shot_id', 'round_id']
         else:
             dfs = []
             csvs = os.listdir(datasets[name])
@@ -238,9 +260,10 @@ class Preprocessor:
         elif name == "PanamaEnergy":
             if self.cyclic_encoded_columns is None:
                 self.cyclic_encoded_columns = ['year', 'month', 'day', 'hour', 'city']
-
+        elif name == "QECParityZZ":
+            if self.cyclic_encoded_columns is None:
+                self.cyclic_encoded_columns = ['shot_id', 'round_id']
         df_cyclic = self.cyclicEncode(df_clean)  # returns the dataframe with cyclic encoding applied
-
         if self.cols_to_scale is None:
             self.cols_to_scale = [col for col in df_cyclic.columns if
                                   col not in self.cyclic_encoded_columns and '_sine' not in col and '_cos' not in col]
