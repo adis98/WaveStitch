@@ -5,7 +5,7 @@ import torch
 from data_utils import PreprocessorOrdinal
 from training_utils import MyDataset, fetchModel, fetchDiffusionConfig
 import numpy as np
-
+import matplotlib.pyplot as plt
 from torch import from_numpy, optim, nn, randint, normal, sqrt, device, save
 import os
 from torch.utils.data import DataLoader
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     parser = argparse.ArgumentParser()
     parser.add_argument('-dataset', '-d', type=str,
-                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, RossmanSales, PanamaEnergy', required=True)
+                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, RossmanSales, PanamaEnergy, QECParityZZ', required=True)
     parser.add_argument('-backbone', type=str, help='Transformer, S4', default='S4')
     parser.add_argument('-beta_0', type=float, default=0.0001, help='initial variance schedule')
     parser.add_argument('-beta_T', type=float, default=0.02, help='last variance schedule')

@@ -128,21 +128,6 @@ class Preprocessor:
         elif name == "PanamaEnergy":
             self.test_indices = self.df_orig.index[self.df_orig['year'].isin([2020])].to_list()
             self.train_indices = self.df_orig.index[~self.df_orig['year'].isin([2020])].to_list()
-        elif name == "QECParityZZ":
-            # 70/30 split, keeping all rows with the same shot_id together
-            seed = 42
-            rng = np.random.default_rng(seed)
-
-            shot_ids = self.df_orig["shot_id"].unique()
-            shuffled_shot_ids = rng.permutation(shot_ids)
-
-            n_train = int(0.7 * len(shuffled_shot_ids))
-            train_shot_ids = set(shuffled_shot_ids[:n_train])
-
-            train_mask = self.df_orig["shot_id"].isin(train_shot_ids)
-
-            self.train_indices = self.df_orig.index[train_mask].to_list()
-            self.test_indices = self.df_orig.index[~train_mask].to_list()
 
     def fetchDataset(self, name, return_cleaned):
         if name != "BeijingAirQuality":
@@ -213,10 +198,7 @@ class Preprocessor:
                 df = df[['year', 'month', 'day', 'hour', 'city', 'T2M', 'TQL', 'W2M', 'QV2M']]
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features_uncyclic = ['year', 'month', 'day', 'hour', 'city']
-            elif name == 'QECParityZZ':
-                # TODO For now only predict measured d1 and d2 and log_flip, maybe use other features/targets too?
-                #df.drop(columns=['prep_state', 'prep_D1', 'prep_D2', 'expected_parity', 'parity'], inplace=True)
-                self.hierarchical_features_uncyclic = ['shot_id', 'round_id']
+
         else:
             dfs = []
             csvs = os.listdir(datasets[name])
@@ -260,9 +242,7 @@ class Preprocessor:
         elif name == "PanamaEnergy":
             if self.cyclic_encoded_columns is None:
                 self.cyclic_encoded_columns = ['year', 'month', 'day', 'hour', 'city']
-        elif name == "QECParityZZ":
-            if self.cyclic_encoded_columns is None:
-                self.cyclic_encoded_columns = ['shot_id', 'round_id']
+
         df_cyclic = self.cyclicEncode(df_clean)  # returns the dataframe with cyclic encoding applied
         if self.cols_to_scale is None:
             self.cols_to_scale = [col for col in df_cyclic.columns if
@@ -348,6 +328,21 @@ class PreprocessorOrdinal:
         elif name == "PanamaEnergy":
             self.test_indices = self.df_orig.index[self.df_orig['year'].isin([2020])].to_list()
             self.train_indices = self.df_orig.index[~self.df_orig['year'].isin([2020])].to_list()
+        elif name == "QECParityZZ":
+            # 70/30 split, keeping all rows with the same shot_id together
+            seed = 42
+            rng = np.random.default_rng(seed)
+
+            shot_ids = self.df_orig["shot_id"].unique()
+            shuffled_shot_ids = rng.permutation(shot_ids)
+
+            n_train = int(0.7 * len(shuffled_shot_ids))
+            train_shot_ids = set(shuffled_shot_ids[:n_train])
+
+            train_mask = self.df_orig["shot_id"].isin(train_shot_ids)
+
+            self.train_indices = self.df_orig.index[train_mask].to_list()
+            self.test_indices = self.df_orig.index[~train_mask].to_list()
 
     def fetchDataset(self, name, return_cleaned):
         if name != "BeijingAirQuality":
@@ -416,6 +411,11 @@ class PreprocessorOrdinal:
                 df = df[['year', 'month', 'day', 'hour', 'city', 'T2M', 'TQL', 'W2M', 'QV2M']]
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features = ['year', 'month', 'day', 'hour', 'city']
+            elif name == 'QECParityZZ':
+                # TODO For now only predict measured d1 and d2 and log_flip, maybe use other features/targets too?
+                # df.drop(columns=['prep_state', 'prep_D1', 'prep_D2', 'expected_parity', 'parity'], inplace=True)
+                self.hierarchical_features = ['shot_id', 'round_id', 'prep_state', 'prep_D1', 'prep_D2', 'expected_parity']
+
 
         else:
             dfs = []
@@ -456,6 +456,10 @@ class PreprocessorOrdinal:
         elif name == "PanamaEnergy":
             if self.encoded_columns is None:
                 self.encoded_columns = ['year', 'month', 'day', 'hour', 'city']
+
+        elif name == "QECParityZZ":
+            if self.encoded_columns is None:
+                self.encoded_columns = ['shot_id', 'round_id', 'prep_state', 'prep_D1', 'prep_D2', 'expected_parity']
 
         df_encoded = self.ordinalEncode(df_clean)  # returns the dataframe with cyclic encoding applied
 

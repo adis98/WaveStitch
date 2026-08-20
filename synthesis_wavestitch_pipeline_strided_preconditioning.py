@@ -29,7 +29,7 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     parser = argparse.ArgumentParser()
     parser.add_argument('-dataset', '-d', type=str,
-                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, WebTraffic, StoreItems, QECParityZZ', required=True)
+                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, WebTraffic, StoreItems', required=True)
     parser.add_argument('-backbone', type=str, help='Transformer, Bilinear, Linear, S4', default='S4')
     parser.add_argument('-beta_0', type=float, default=0.0001, help='initial variance schedule')
     parser.add_argument('-beta_T', type=float, default=0.02, help='last variance schedule')
@@ -76,11 +76,8 @@ if __name__ == "__main__":
         decimal_accuracy[key] = decimal_accuracy_orig[key]
 
     metadata = test_df_with_hierarchy[preprocessor.hierarchical_features_uncyclic]
-    print('metadata head', metadata.head())
     rows_to_synth = metadataMask(metadata, args.synth_mask, args.dataset)
-    print('rows_to_synth', rows_to_synth)
     real_df = test_df_with_hierarchy[rows_to_synth]
-    print('real df', real_df.head())
     df_synth = test_df.copy()
     """Approach 1: Pipeline"""
     test_samples = []
