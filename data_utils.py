@@ -329,20 +329,18 @@ class PreprocessorOrdinal:
             self.test_indices = self.df_orig.index[self.df_orig['year'].isin([2020])].to_list()
             self.train_indices = self.df_orig.index[~self.df_orig['year'].isin([2020])].to_list()
         elif name == "QECParityZZ":
-            # 70/30 split, keeping all rows with the same shot_id together
-            seed = 42
-            rng = np.random.default_rng(seed)
+            # ~50/50 split
+            train_frac = 0.5 # Fraction of data to use for training
 
-            shot_ids = self.df_orig["shot_id"].unique()
-            shuffled_shot_ids = rng.permutation(shot_ids)
+            shot_ids = self.df_orig["shot_id"].dropna().unique()
+            n_train_shots = int(len(shot_ids) * train_frac)
 
-            n_train = int(0.7 * len(shuffled_shot_ids))
-            train_shot_ids = set(shuffled_shot_ids[:n_train])
-
+            train_shot_ids = shot_ids[:n_train_shots]
             train_mask = self.df_orig["shot_id"].isin(train_shot_ids)
+            self.train_indices = train_mask.loc[train_mask].index.to_list()
 
-            self.train_indices = self.df_orig.index[train_mask].to_list()
-            self.test_indices = self.df_orig.index[~train_mask].to_list()
+            test_mask  = ~train_mask
+            self.test_indices = test_mask.loc[test_mask].index.to_list()
 
     def fetchDataset(self, name, return_cleaned):
         if name != "BeijingAirQuality":
@@ -412,8 +410,6 @@ class PreprocessorOrdinal:
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features = ['year', 'month', 'day', 'hour', 'city']
             elif name == 'QECParityZZ':
-                # TODO For now only predict measured d1 and d2 and log_flip, maybe use other features/targets too?
-                # df.drop(columns=['prep_state', 'prep_D1', 'prep_D2', 'expected_parity', 'parity'], inplace=True)
                 self.hierarchical_features = ['shot_id', 'round_id', 'prep_state', 'prep_D1', 'prep_D2', 'expected_parity']
 
 

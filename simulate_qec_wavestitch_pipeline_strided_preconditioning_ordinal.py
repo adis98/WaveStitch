@@ -21,6 +21,8 @@ def create_pipelined_noise(test_batch, args):
     sampled_noise = sampled.unfold(0, args.window_size, args.stride).transpose(1, 2)
     return sampled_noise
 
+SHOT_ID_COL = 'shot_id'
+ROUND_ID_COL = 'round_id'
 
 if __name__ == "__main__":
     np.random.seed(42)
@@ -49,8 +51,8 @@ if __name__ == "__main__":
     parser.add_argument('-s4_dropout', type=float, default=0.0)
     parser.add_argument('-s4_bidirectional', type=bool, default=True)
     parser.add_argument('-s4_layernorm', type=bool, default=True)
-    parser.add_argument('-shot_range', type=str, required=True,
-                        help="indicate the shot range in the format A-B, where A and B are the start and end (both inclusive")
+    parser.add_argument('-shot_range', type=str,
+                        help="indicate the shot range in the format A-B, where A and B are the start and end (both inclusive). Will take all test shots by default if not defined.")
     parser.add_argument('-n_trials', type=int, default=1, help="the number of simulations")
     args = parser.parse_args()
     dataset = args.dataset
@@ -60,17 +62,25 @@ if __name__ == "__main__":
     preprocessor = PreprocessorOrdinal(dataset)
     df = preprocessor.df_cleaned
 
-    #  Add some more samples form the training set as additional context for synthesis
-    shot_range_lb, shot_range_ub = int(args.shot_range.split('-')[0]), int(args.shot_range.split('-')[1])
+    #  Add some more samples from the training set as additional context for synthesis
+    test_df = df
+    if args.shot_range is None: # Take all shots in test_dataset
+        test_shots = preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL]
+        shot_range_lb = int(preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL].min())
+        shot_range_ub = int(preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL].max())
+        print('range: ', shot_range_lb, "-", shot_range_ub)
+    else:
+        shot_range_lb, shot_range_ub = int(args.shot_range.split('-')[0]), int(args.shot_range.split('-')[1])
     assert shot_range_lb <= shot_range_ub, "lower bound of shot ID must be lesser or equal to the the upper bound"
-    assert (preprocessor.df_orig['shot_id'].min() <= shot_range_lb <= preprocessor.df_orig['shot_id'].max()), f"shot id must be between {preprocessor.df_orig['shot_id'].min()} and {preprocessor.df_orig['shot_id'].max()}"
-    assert (preprocessor.df_orig['shot_id'].min() <= shot_range_ub <= preprocessor.df_orig['shot_id'].max()), f"shot id must be between {preprocessor.df_orig['shot_id'].min()} and {preprocessor.df_orig['shot_id'].max()}"
+    assert (preprocessor.df_orig[SHOT_ID_COL].min() <= shot_range_lb <= preprocessor.df_orig[SHOT_ID_COL].max()), f"shot id must be between {preprocessor.df_orig[SHOT_ID_COL].min()} and {preprocessor.df_orig[SHOT_ID_COL].max()}"
+    assert (preprocessor.df_orig[SHOT_ID_COL].min() <= shot_range_ub <= preprocessor.df_orig[SHOT_ID_COL].max()), f"shot id must be between {preprocessor.df_orig[SHOT_ID_COL].min()} and {preprocessor.df_orig[SHOT_ID_COL].max()}"
     # First row containing the lower-bound shot ID
-    start = preprocessor.df_orig.index[preprocessor.df_orig['shot_id'] == shot_range_lb][0]
+    start = preprocessor.df_orig.index[preprocessor.df_orig[SHOT_ID_COL] == shot_range_lb][0]
     # Last row containing the upper-bound shot ID
-    end = preprocessor.df_orig.index[preprocessor.df_orig['shot_id'] == shot_range_ub][-1]
+    end = preprocessor.df_orig.index[preprocessor.df_orig[SHOT_ID_COL] == shot_range_ub][-1]
     window_cnt = ((end + 1 - args.window_size - start)//args.stride) + 1
     test_df = df.loc[start:end]
+
     test_df_with_hierarchy = preprocessor.decode(test_df, rescale=True)
     decimal_accuracy_orig = preprocessor.df_orig.apply(decimal_places).to_dict()
     decimal_accuracy_processed = test_df_with_hierarchy.apply(decimal_places).to_dict()
