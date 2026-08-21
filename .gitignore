@@ -18,6 +18,7 @@ downloads/
 saved_models/
 saved_models/MetroTraffic/model_prop.pth
 saved_models/MetroTraffic/model.pth
+simulated_qec_data/
 eggs/
 .eggs/
 lib/
