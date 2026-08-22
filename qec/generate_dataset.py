@@ -31,7 +31,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--hierarchical-columns", nargs="+", required=True)
 
     # Kept identical across training and generation so model dimensions/config agree.
-    parser.add_argument("--window-size", type=int, default=34)
+    parser.add_argument("--window-size", type=int, default=34) # Should be equal to amount of rounds in a shot
     parser.add_argument("--stride", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--timesteps", type=int, default=200)
@@ -139,7 +139,7 @@ def main() -> None:
             str(generation_script),
             *common,
             "-n_trials", "1",
-            "-model_path", str(model_path),
+            #"-model_path", str(model_path),
             "-output_path", str(output),
         ], cwd=repo)
 

@@ -360,7 +360,22 @@ class PreprocessorOrdinal:
 
     def fetchDataset(self, name, return_cleaned, qec_params: Dict[str, Any] = None):
         if name != "BeijingAirQuality":
-            if name == "RossmanSales":
+            if name == 'QEC':
+                if qec_params is None:
+                    raise ValueError('Please provide QEC parameters.')
+
+                # Read data from csv, parquet or directly as dataframe
+                if 'csv_path' in qec_params:
+                    df = pd.read_csv(qec_params['csv_path'])
+                elif 'parquet_path' in qec_params:
+                    df = pd.read_parquet(qec_params['parquet_path'])
+                elif 'df' in qec_params:
+                    df = qec_params['df']
+                else:
+                    raise ValueError('Please provide data as csv_path, parquet_path, or dataframe (df).')
+
+                self.hierarchical_features = qec_params['hierarchical_features']
+            elif name == "RossmanSales":
                 df = pd.read_csv(datasets[name], dtype={'StateHoliday': 'object'})
             else:
                 df = pd.read_csv(datasets[name])
@@ -425,22 +440,6 @@ class PreprocessorOrdinal:
                 df = df[['year', 'month', 'day', 'hour', 'city', 'T2M', 'TQL', 'W2M', 'QV2M']]
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features = ['year', 'month', 'day', 'hour', 'city']
-            elif name == 'QEC':
-                if qec_params is None:
-                    raise ValueError('Please provide QEC parameters.')
-
-                # Read data from csv, parquet or directly as dataframe
-                if 'csv_path' in qec_params:
-                    df = pd.read_csv(qec_params['csv_path'])
-                elif 'parquet_path' in qec_params:
-                    df = pd.read_parquet(qec_params['parquet_path'])
-                elif 'df' in qec_params:
-                    df = qec_params['df']
-                else:
-                    raise ValueError('Please provide data as csv_path, parquet_path, or dataframe (df).')
-
-                self.hierarchical_features = qec_params['hierarchical_features']
-
 
         else:
             dfs = []
