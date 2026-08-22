@@ -1,3 +1,5 @@
+from typing import Any, Dict, List
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
@@ -13,7 +15,6 @@ datasets = {
     "MetroTraffic": "MetroInterstateTrafficVolume/Metro_Interstate_Traffic_Volume.csv/Metro_Interstate_Traffic_Volume.csv",
     "BeijingAirQuality": "BeijingAirQuality/beijing+multi+site+air+quality+data",
     "PanamaEnergy": "PanamaEnergy/continuous dataset.csv",
-    "QECParityZZ": "processed_zz_parity_check/qec_table.csv"
 }
 
 
@@ -299,16 +300,16 @@ class Preprocessor:
 
 
 class PreprocessorOrdinal:
-    def __init__(self, name):
+    def __init__(self, name, qec_params: Dict[str, Any] = None):
         self.cols_to_scale = None
         self.encoded_columns = None
         self.encoder = None
         self.hierarchical_features = []
         self.scaler = StandardScaler()
-        self.df_orig = self.fetchDataset(name, False)
+        self.df_orig = self.fetchDataset(name, False, qec_params)
         self.column_dtypes = self.df_orig.dtypes.to_dict()
         self.cats_with_nans = None
-        self.df_cleaned = self.fetchDataset(name, True)
+        self.df_cleaned = self.fetchDataset(name, True, qec_params)
         self.train_indices = None
         self.test_indices = None
         if name == "MetroTraffic":
@@ -328,7 +329,7 @@ class PreprocessorOrdinal:
         elif name == "PanamaEnergy":
             self.test_indices = self.df_orig.index[self.df_orig['year'].isin([2020])].to_list()
             self.train_indices = self.df_orig.index[~self.df_orig['year'].isin([2020])].to_list()
-        elif name == "QECParityZZ":
+        elif name == "QEC":
             # ~50/50 split
             train_frac = 0.5 # Fraction of data to use for training
 
@@ -342,7 +343,22 @@ class PreprocessorOrdinal:
             test_mask  = ~train_mask
             self.test_indices = test_mask.loc[test_mask].index.to_list()
 
-    def fetchDataset(self, name, return_cleaned):
+    @classmethod
+    def qec_params_from_input(cls, input_path: str, hierarchical_features: List[str]) -> Dict[str, Any]:
+        qec_params = {}
+
+        if input_path.endswith(".csv"):
+            qec_params['csv_path'] = input_path
+        elif input_path.endswith(".parquet"):
+            qec_params['parquet_path'] = input_path
+        else:
+            raise ValueError(f"Input path {input_path} must be .csv or .parquet.")
+
+        qec_params['hierarchical_features'] = hierarchical_features
+
+        return qec_params
+
+    def fetchDataset(self, name, return_cleaned, qec_params: Dict[str, Any] = None):
         if name != "BeijingAirQuality":
             if name == "RossmanSales":
                 df = pd.read_csv(datasets[name], dtype={'StateHoliday': 'object'})
@@ -409,8 +425,21 @@ class PreprocessorOrdinal:
                 df = df[['year', 'month', 'day', 'hour', 'city', 'T2M', 'TQL', 'W2M', 'QV2M']]
                 df = df.sort_values(by=['year', 'month', 'day', 'hour', 'city'], ignore_index=True)
                 self.hierarchical_features = ['year', 'month', 'day', 'hour', 'city']
-            elif name == 'QECParityZZ':
-                self.hierarchical_features = ['shot_id', 'round_id', 'prep_state', 'prep_D1', 'prep_D2', 'expected_parity']
+            elif name == 'QEC':
+                if qec_params is None:
+                    raise ValueError('Please provide QEC parameters.')
+
+                # Read data from csv, parquet or directly as dataframe
+                if 'csv_path' in qec_params:
+                    df = pd.read_csv(qec_params['csv_path'])
+                elif 'parquet_path' in qec_params:
+                    df = pd.read_parquet(qec_params['parquet_path'])
+                elif 'df' in qec_params:
+                    df = qec_params['df']
+                else:
+                    raise ValueError('Please provide data as csv_path, parquet_path, or dataframe (df).')
+
+                self.hierarchical_features = qec_params['hierarchical_features']
 
 
         else:
@@ -453,9 +482,9 @@ class PreprocessorOrdinal:
             if self.encoded_columns is None:
                 self.encoded_columns = ['year', 'month', 'day', 'hour', 'city']
 
-        elif name == "QECParityZZ":
+        elif name == "QEC":
             if self.encoded_columns is None:
-                self.encoded_columns = ['shot_id', 'round_id', 'prep_state', 'prep_D1', 'prep_D2', 'expected_parity']
+                self.encoded_columns = self.hierarchical_features
 
         df_encoded = self.ordinalEncode(df_clean)  # returns the dataframe with cyclic encoding applied
 

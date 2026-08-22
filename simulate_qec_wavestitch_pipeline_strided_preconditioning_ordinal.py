@@ -29,7 +29,11 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     parser = argparse.ArgumentParser()
     parser.add_argument('-dataset', '-d', type=str,
-                        help='QECParityZZ', default='QECParityZZ')
+                        help='QEC', default='QEC')
+    parser.add_argument('-qec_file_path', type=str)
+    parser.add_argument('-hierarchical_features', nargs='+', type=str)
+    parser.add_argument('-model_path', type=str, default='saved_models/QEC/model_ordinal.pth')
+    parser.add_argument('-output_path', type=str)
     parser.add_argument('-backbone', type=str, help='Transformer, Bilinear, Linear, S4', default='S4')
     parser.add_argument('-beta_0', type=float, default=0.0001, help='initial variance schedule')
     parser.add_argument('-beta_T', type=float, default=0.02, help='last variance schedule')
@@ -59,27 +63,39 @@ if __name__ == "__main__":
     if "qec" not in args.dataset.lower():
         raise ValueError("Provided dataset must be a QEC one only!")
     device = device('cuda' if torch.cuda.is_available() else 'cpu')
-    preprocessor = PreprocessorOrdinal(dataset)
+    qec_params = PreprocessorOrdinal.qec_params_from_input(args.qec_file_path, args.hierarchical_features)
+    preprocessor = PreprocessorOrdinal(dataset, qec_params)
     df = preprocessor.df_cleaned
 
-    #  Add some more samples from the training set as additional context for synthesis
-    test_df = df
-    if args.shot_range is None: # Take all shots in test_dataset
-        test_shots = preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL]
-        shot_range_lb = int(preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL].min())
-        shot_range_ub = int(preprocessor.df_orig.iloc[preprocessor.test_indices][SHOT_ID_COL].max())
-        print('range: ', shot_range_lb, "-", shot_range_ub)
+    # Generate the complete held-out test split by default. The train/test split
+    # itself remains shot-level in PreprocessorOrdinal.
+    test_orig = preprocessor.df_orig.loc[preprocessor.test_indices]
+    available_test_shots = list(pd.unique(test_orig[SHOT_ID_COL].dropna()))
+    if not available_test_shots:
+        raise ValueError("QEC preprocessing produced no held-out shots for generation")
+
+    if args.shot_range is not None:
+        shot_range_lb, shot_range_ub = (
+            int(args.shot_range.split('-')[0]), int(args.shot_range.split('-')[1])
+        )
+        selected_shots = [
+            shot for shot in available_test_shots if shot_range_lb <= int(shot) <= shot_range_ub
+        ]
     else:
-        shot_range_lb, shot_range_ub = int(args.shot_range.split('-')[0]), int(args.shot_range.split('-')[1])
-    assert shot_range_lb <= shot_range_ub, "lower bound of shot ID must be lesser or equal to the the upper bound"
-    assert (preprocessor.df_orig[SHOT_ID_COL].min() <= shot_range_lb <= preprocessor.df_orig[SHOT_ID_COL].max()), f"shot id must be between {preprocessor.df_orig[SHOT_ID_COL].min()} and {preprocessor.df_orig[SHOT_ID_COL].max()}"
-    assert (preprocessor.df_orig[SHOT_ID_COL].min() <= shot_range_ub <= preprocessor.df_orig[SHOT_ID_COL].max()), f"shot id must be between {preprocessor.df_orig[SHOT_ID_COL].min()} and {preprocessor.df_orig[SHOT_ID_COL].max()}"
-    # First row containing the lower-bound shot ID
-    start = preprocessor.df_orig.index[preprocessor.df_orig[SHOT_ID_COL] == shot_range_lb][0]
-    # Last row containing the upper-bound shot ID
-    end = preprocessor.df_orig.index[preprocessor.df_orig[SHOT_ID_COL] == shot_range_ub][-1]
-    window_cnt = ((end + 1 - args.window_size - start)//args.stride) + 1
-    test_df = df.loc[start:end]
+        selected_shots = available_test_shots
+        shot_range_lb = int(selected_shots[0])
+        shot_range_ub = int(selected_shots[-1])
+
+    if not selected_shots:
+        raise ValueError("The requested shot selection contains no held-out QEC shots")
+
+    selected_indices = test_orig.index[test_orig[SHOT_ID_COL].isin(selected_shots)]
+    test_df = df.loc[selected_indices]
+    if len(test_df) < args.window_size:
+        raise ValueError(
+            f"Selected QEC data has {len(test_df)} rows, fewer than window_size={args.window_size}"
+        )
+    print('selected held-out shots:', len(selected_shots), shot_range_lb, '-', shot_range_ub)
 
     test_df_with_hierarchy = preprocessor.decode(test_df, rescale=True)
     decimal_accuracy_orig = preprocessor.df_orig.apply(decimal_places).to_dict()
@@ -118,7 +134,7 @@ if __name__ == "__main__":
     #
     # # Convert to an ndarray
     non_hier_cols = np.array(remaining_indices)
-    saved_params = torch.load(f'saved_models/{args.dataset}/model_ordinal.pth', map_location=device)
+    saved_params = torch.load(args.model_path, map_location=device)
     with torch.no_grad():
         for name, param in model.named_parameters():
             param.copy_(saved_params[name])
@@ -216,21 +232,30 @@ if __name__ == "__main__":
         synth_df_reconverted_selected = synth_df_reconverted[rows_to_synth_reset]
         synth_df_reconverted_selected = synth_df_reconverted_selected.round(decimal_accuracy)
         synth_df_reconverted_selected = synth_df_reconverted_selected.reset_index(drop=True)
-        path = f'simulated_qec_data/{args.dataset}/shot_{shot_range_lb}_to_{shot_range_ub}/'
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        if not os.path.exists(f'{path}real.csv'):
-            real_df_reconverted.to_csv(f'{path}real.csv')
         synth_df_reconverted_selected = synth_df_reconverted_selected[real_df_reconverted.columns]
 
-        synth_df_reconverted_selected.to_csv(f'{path}synth_wavestitch_pipeline_stride_{args.stride}_trial_{trial}_ordinal.csv')
-        if trial == 0:
-            with open(f'{path}denoiser_calls_pipeline_stride_{args.stride}_ordinal.txt', 'w') as file:
-                file.write(str(num_ops))
+        if args.output_path:
+            if args.n_trials != 1:
+                raise ValueError("-output_path requires -n_trials 1")
+            output_path = os.path.abspath(args.output_path)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            synth_df_reconverted_selected.to_csv(output_path, index=False)
+            print(f"Saved generated QEC CSV to {output_path}")
+        else:
+            path = f'simulated_qec_data/{args.dataset}/shot_{shot_range_lb}_to_{shot_range_ub}/'
+            os.makedirs(path, exist_ok=True)
+            if not os.path.exists(f'{path}real.csv'):
+                real_df_reconverted.to_csv(f'{path}real.csv', index=False)
+            synth_df_reconverted_selected.to_csv(
+                f'{path}synth_wavestitch_pipeline_stride_{args.stride}_trial_{trial}_ordinal.csv',
+                index=False,
+            )
+            if trial == 0:
+                with open(f'{path}denoiser_calls_pipeline_stride_{args.stride}_ordinal.txt', 'w') as file:
+                    file.write(str(num_ops))
 
-    with open(f'simulated_qec_data/{args.dataset}/shot_{shot_range_lb}_to_{shot_range_ub}/denoiser_calls_pipeline_stride_{args.stride}_ordinal.txt', 'a') as file:
-        arr_time = np.array(exec_times)
-        file.write('\n' + str(np.mean(arr_time)) + '\n')
-        file.write(str(np.std(arr_time)))
-
+    if not args.output_path:
+        with open(f'simulated_qec_data/{args.dataset}/shot_{shot_range_lb}_to_{shot_range_ub}/denoiser_calls_pipeline_stride_{args.stride}_ordinal.txt', 'a') as file:
+            arr_time = np.array(exec_times)
+            file.write('\n' + str(np.mean(arr_time)) + '\n')
+            file.write(str(np.std(arr_time)))

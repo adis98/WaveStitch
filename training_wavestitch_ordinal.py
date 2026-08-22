@@ -15,7 +15,10 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     parser = argparse.ArgumentParser()
     parser.add_argument('-dataset', '-d', type=str,
-                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, RossmanSales, PanamaEnergy, QECParityZZ', required=True)
+                        help='MetroTraffic, BeijingAirQuality, AustraliaTourism, RossmanSales, PanamaEnergy, QEC', required=True)
+    parser.add_argument('-qec_file_path', type=str)
+    parser.add_argument('-hierarchical_features', nargs='+', type=str)
+    parser.add_argument('-model_path', type=str, default='saved_models/QEC/model_ordinal.pth')
     parser.add_argument('-backbone', type=str, help='Transformer, S4', default='S4')
     parser.add_argument('-beta_0', type=float, default=0.0001, help='initial variance schedule')
     parser.add_argument('-beta_T', type=float, default=0.02, help='last variance schedule')
@@ -23,7 +26,7 @@ if __name__ == "__main__":
     parser.add_argument('-hdim', type=int, default=64, help='hidden embedding dimension')
     parser.add_argument('-lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('-batch_size', type=int, help='batch size', default=1024)
-    parser.add_argument('-epochs', type=int, default=1000, help='training epochs')
+    parser.add_argument('-epochs', type=int, default=100, help='training epochs')
     parser.add_argument('-layers', type=int, default=4, help='number of hidden layers')
     parser.add_argument('-window_size', type=int, default=32, help='the size of the training windows')
     parser.add_argument('-stride', type=int, default=1, help='the stride length to shift the training window by')
@@ -42,15 +45,42 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dataset = args.dataset
     device = device('cuda' if torch.cuda.is_available() else 'cpu')
-    preprocessor = PreprocessorOrdinal(dataset)
+
+    if dataset.lower() == 'qec':
+        qec_params = PreprocessorOrdinal.qec_params_from_input(args.qec_file_path, args.hierarchical_features)
+        preprocessor = PreprocessorOrdinal(dataset, qec_params)
+    else:
+        preprocessor = PreprocessorOrdinal(dataset)
     df = preprocessor.df_cleaned
     training_df = df.loc[preprocessor.train_indices]
     test_df = df.loc[preprocessor.test_indices]
     hierarchical_column_indices = training_df.columns.get_indexer(preprocessor.hierarchical_features)
+    if (hierarchical_column_indices < 0).any():
+        missing = [
+            feature for feature, index in zip(preprocessor.hierarchical_features, hierarchical_column_indices)
+            if index < 0
+        ]
+        raise ValueError(f"Unknown hierarchical feature(s): {missing}")
+
+    # QEC shots are independent sequences. Never let a training window cross a
+    # shot boundary, even though the cleaned dataframe is stored long-form.
     training_samples = []
-    for i in range(0, len(training_df) - args.window_size + 1, args.stride):
-        window = training_df.iloc[i:i + args.window_size].values
-        training_samples.append(window)
+    if dataset.lower() == 'qec':
+        train_orig = preprocessor.df_orig.loc[preprocessor.train_indices]
+        for shot_id in train_orig['shot_id'].dropna().unique():
+            shot_indices = train_orig.index[train_orig['shot_id'] == shot_id]
+            shot_df = df.loc[shot_indices]
+            for i in range(0, len(shot_df) - args.window_size + 1, args.stride):
+                training_samples.append(shot_df.iloc[i:i + args.window_size].values)
+    else:
+        for i in range(0, len(training_df) - args.window_size + 1, args.stride):
+            training_samples.append(training_df.iloc[i:i + args.window_size].values)
+
+    if not training_samples:
+        raise ValueError(
+            f"No training windows were created. Reduce window_size={args.window_size} "
+            "or provide QEC shots with enough rounds."
+        )
 
     in_dim = len(training_df.columns)
     out_dim = len(training_df.columns) - len(hierarchical_column_indices)
@@ -91,13 +121,10 @@ if __name__ == "__main__":
             sigmas_permuted = sigmas_permuted.to(device)
             loss = criterion(sigmas_predicted, sigmas_permuted)
             loss.backward()
-            total_loss += loss
+            total_loss += loss.item()
             optimizer.step()
         print(f'epoch: {epoch}, loss: {total_loss}')
-    path = f'saved_models/{args.dataset}/'
-    filename = "model_ordinal.pth"
-    filepath = os.path.join(path, filename)
-
-    if not os.path.exists(path):
-        os.makedirs(path)
-    torch.save(model.state_dict(), filepath)
+    model_path = os.path.abspath(args.model_path)
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    torch.save(model.state_dict(), model_path)
+    print(f"Saved WaveStitch model to {model_path}")
