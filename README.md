@@ -147,7 +147,7 @@ saved_models/
 Synthetic data can be generated using the corresponding `synthesis_*.py` scripts. For example:
 
 ```bash
-python synthesis_wavestitch.py
+python synthesis_wavestitch_pipeline_strided_preconditioning.py
 ```
 
 Generated data are stored in:
