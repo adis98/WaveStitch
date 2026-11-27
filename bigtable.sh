@@ -9,7 +9,6 @@ for dataset in "${options_dataset[@]}"
 do
   for synth_mask in "${options_synth_mask[@]}"
   do
-<<<<<<< HEAD
     #python3.12 synthesis_tsdiff.py -d $dataset -synth_mask $synth_mask -strength 0.0
     #python3.12 synthesis_tsdiff.py -d $dataset -synth_mask $synth_mask -strength 0.5
     #python3.12 synthesis_tsdiff.py -d $dataset -synth_mask $synth_mask -strength 1.0
@@ -17,21 +16,12 @@ do
     #python3.12 synthesis_hyacinth_pipeline.py -d $dataset -synth_mask $synth_mask
     #python3.12 synthesis_timeweaver.py -d $dataset -synth_mask $synth_mask
 #    python3.12 synthesis_timegan.py -d $dataset -synth_mask $synth_mask
-=======
->>>>>>> 5d4c1dc442feb98c8aff8275343ffedb3c6418fe
-
     python3.12 synthesis_tsdiff.py -d $dataset -synth_mask $synth_mask -strength 0.5
     python3.12 synthesis_timeweaver.py -d $dataset -synth_mask $synth_mask
     python3.12 synthesis_timegan.py -d $dataset -synth_mask $synth_mask
     python3.12 synthesis_wavestitch_pipeline_strided_preconditioning.py -d $dataset -synth_mask $synth_mask -stride 8
-
-
-<<<<<<< HEAD
     #python3.12 synthesis_hyacinth_autoregressive.py -d $dataset -synth_mask $synth_mask -stride 32
     python3.12 synthesis_timeautodiff.py -d $dataset -synth_mask $synth_mask
     python3.12 synthesis_sssd.py -d $dataset -synth_mask $synth_mask
-
-=======
->>>>>>> 5d4c1dc442feb98c8aff8275343ffedb3c6418fe
   done
 done
